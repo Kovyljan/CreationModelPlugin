@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Autodesk.Revit.ApplicationServices;
 
 namespace CreationModelPlugin
 {
@@ -36,18 +37,19 @@ namespace CreationModelPlugin
             //   .WhereElementIsNotElementType()
             //   .ToList();
 
+            double width = UnitUtils.ConvertToInternalUnits(12000, UnitTypeId.Millimeters);
+            double depth = UnitUtils.ConvertToInternalUnits(7000, UnitTypeId.Millimeters);
+
             Level level_1;
             Level level_2;
             TakeLevels(doc, out level_1, out level_2);
-            CreateWalls(doc, level_1, level_2);
+            CreateWalls(doc, level_1, level_2, width, depth);
             return Result.Succeeded;
         }
 
 
-        private static void CreateWalls(Document doc, Level level_1, Level level_2)
-        {
-            double width = UnitUtils.ConvertToInternalUnits(10000, UnitTypeId.Millimeters);
-            double depth = UnitUtils.ConvertToInternalUnits(5000, UnitTypeId.Millimeters);
+        private static void CreateWalls(Document doc, Level level_1, Level level_2, double width, double depth)
+        {            
             double dx = width / 2;
             double dy = depth / 2;
 
@@ -73,8 +75,85 @@ namespace CreationModelPlugin
             AddWindow(doc, level_1, walls[1]);
             AddWindow(doc, level_1, walls[2]);
             AddWindow(doc, level_1, walls[3]);
+            AddRoof(doc, level_2, walls, width, depth);
             transaction.Commit();
         }
+
+        private static void AddRoof(Document doc, Level level_2, List<Wall> walls, double width, double depth)
+        {            
+            double dx = width / 2;
+            double dy = depth / 2;
+
+            double wallWidth = walls[0].Width;
+            double dt = wallWidth / 2;
+
+            double facade = level_2.get_Parameter(BuiltInParameter.LEVEL_ELEV).AsDouble();
+            
+            
+            RoofType roofType = new FilteredElementCollector(doc)
+                .OfClass(typeof(RoofType))
+                .OfType<RoofType>()
+                .Where(x => x.Name.Equals("Типовой - 400мм"))
+                .Where(x => x.FamilyName.Equals("Базовая крыша"))
+                .FirstOrDefault();
+
+            CurveArray curveArray = new CurveArray();
+            curveArray.Append(Line.CreateBound(new XYZ((-dx - dt), (-dy-dt), facade), new XYZ((-dx - dt), 0, 20)));
+            curveArray.Append(Line.CreateBound(new XYZ((-dx - dt), 0, 20), new XYZ((-dx - dt), (dy+dt), facade)));
+
+            ReferencePlane plane = doc.Create.NewReferencePlane(new XYZ(0, 0, 0), new XYZ(0, 0, 20), new XYZ(0, 20, 0), doc.ActiveView);
+            doc.Create.NewExtrusionRoof(curveArray, plane, level_2, roofType, (-dx - dt), (dx + dt));
+
+
+        }
+
+        //private static void AddRoof(Document doc, Level level_2, List<Wall> walls)
+        //{
+        //    RoofType roofType = new FilteredElementCollector(doc)
+        //        .OfClass(typeof(RoofType))
+        //        .OfType<RoofType>()
+        //        .Where(x => x.Name.Equals("Типовой - 400мм"))
+        //        .Where(x => x.FamilyName.Equals("Базовая крыша"))
+        //        .FirstOrDefault();
+
+        //    double wallWidth = walls[0].Width;
+        //    double dt = wallWidth / 2;
+
+        //    List<XYZ> points = new List<XYZ>();
+        //    points.Add(new XYZ(-dt, -dt, 0));
+        //    points.Add(new XYZ(dt, -dt, 0));
+        //    points.Add(new XYZ(dt, dt, 0));
+        //    points.Add(new XYZ(-dt, dt, 0));
+        //    points.Add(new XYZ(-dt, -dt, 0));
+
+        //    Application application = doc.Application;
+        //    CurveArray footprint = application.Create.NewCurveArray();
+        //    for (int i = 0; i < 4; i++)
+        //    {
+        //        LocationCurve locationCurve = walls[i].Location as LocationCurve;
+        //        XYZ point_1 = locationCurve.Curve.GetEndPoint(0);
+        //        XYZ point_2 = locationCurve.Curve.GetEndPoint(1);
+        //        Line line = Line.CreateBound(point_1 + points[i], point_2 + points[i + 1]);
+        //        footprint.Append(line);
+        //    }
+
+        //    ModelCurveArray footPrintToModelCurveMapping = new ModelCurveArray();
+        //    FootPrintRoof footprintRoof = doc.Create.NewFootPrintRoof(footprint, level_2, roofType, out footPrintToModelCurveMapping);
+        //    //ModelCurveArrayIterator iterator = footPrintToModelCurveMapping.ForwardIterator();
+        //    //iterator.Reset();
+        //    //while (iterator.MoveNext())
+        //    //{
+        //    //    ModelCurve modelCurve = iterator.Current as ModelCurve;
+        //    //    footprintRoof.set_DefinesSlope(modelCurve, true);
+        //    //    footprintRoof.set_SlopeAngle(modelCurve, 0.5);
+        //    //}
+
+        //    foreach (ModelCurve m in footPrintToModelCurveMapping)
+        //    {
+        //        footprintRoof.set_DefinesSlope(m, true);
+        //        footprintRoof.set_SlopeAngle(m, 0.5);
+        //    }
+        //}
 
         private static void AddDoor(Document doc, Level level_1, Wall wall)
         {
